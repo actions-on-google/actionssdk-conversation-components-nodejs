@@ -1,0 +1,6 @@
+*.DS_store
+*.log
+node_modules
+package-lock.json
+.firebaserc
+creds.data

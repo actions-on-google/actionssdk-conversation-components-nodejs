@@ -16,38 +16,38 @@
 const {
   actionssdk,
   BasicCard,
+  BrowseCarousel,
+  BrowseCarouselItem,
   Button,
   Carousel,
   Image,
   LinkOutSuggestion,
   List,
+  MediaObject,
   Suggestions,
   SimpleResponse,
+  Table,
  } = require('actions-on-google');
 const functions = require('firebase-functions');
 
 // Constants for list and carousel selection
-const SELECTION_KEY_GOOGLE_ALLO = 'googleAllo';
-const SELECTION_KEY_GOOGLE_HOME = 'googleHome';
+const SELECTION_KEY_GOOGLE_ASSISTANT = 'googleAssistant';
+const SELECTION_KEY_GOOGLE_PAY = 'googlePay';
 const SELECTION_KEY_GOOGLE_PIXEL = 'googlePixel';
-const SELECTION_KEY_ONE = 'title';
+const SELECTION_KEY_GOOGLE_HOME = 'googleHome';
 
 // Constants for image URLs
-const IMG_URL_AOG = 'https://developers.google.com/actions/images/badges' +
-  '/XPM_BADGING_GoogleAssistant_VER.png';
-const IMG_URL_GOOGLE_ALLO = 'https://allo.google.com/images/allo-logo.png';
-const IMG_URL_GOOGLE_HOME = 'https://lh3.googleusercontent.com' +
-  '/Nu3a6F80WfixUqf_ec_vgXy_c0-0r4VLJRXjVFF_X_CIilEu8B9fT35qyTEj_PEsKw';
-const IMG_URL_GOOGLE_PIXEL = 'https://storage.googleapis.com/madebygoog/v1' +
-  '/Pixel/Pixel_ColorPicker/Pixel_Device_Angled_Black-720w.png';
+const IMG_URL_AOG = 'https://storage.googleapis.com/actionsresources/logo_assistant_2x_64dp.png';
+const IMG_URL_GOOGLE_PAY = 'https://storage.googleapis.com/actionsresources/logo_pay_64dp.png';
+const IMG_URL_GOOGLE_PIXEL = 'https://storage.googleapis.com/madebygoog/v1/Pixel/Pixel_ColorPicker/Pixel_Device_Angled_Black-720w.png';
+const IMG_URL_GOOGLE_HOME ='https://lh3.googleusercontent.com/Nu3a6F80WfixUqf_ec_vgXy_c0-0r4VLJRXjVFF_X_CIilEu8B9fT35qyTEj_PEsKw';
 
 // Constants for selected item responses
 const SELECTED_ITEM_RESPONSES = {
-  [SELECTION_KEY_ONE]: 'You selected the first item in the list or carousel',
-  [SELECTION_KEY_GOOGLE_HOME]: 'You selected the Google Home!',
-  [SELECTION_KEY_GOOGLE_PIXEL]: 'You selected the Google Home!',
-  [SELECTION_KEY_GOOGLE_PIXEL]: 'You selected the Google Pixel!',
-  [SELECTION_KEY_GOOGLE_ALLO]: 'You selected Google Allo!',
+  [SELECTION_KEY_GOOGLE_ASSISTANT]: 'You selected Google Assistant!',
+  [SELECTION_KEY_GOOGLE_PAY]: 'You selected Google Pay!',
+  [SELECTION_KEY_GOOGLE_PIXEL]: 'You selected Google Pixel!',
+  [SELECTION_KEY_GOOGLE_HOME]: 'You selected Google Home!',
 };
 
 const intentSuggestions = [
@@ -57,6 +57,7 @@ const intentSuggestions = [
   'List',
   'Media',
   'Suggestions',
+  'Table',
 ];
 
 const app = actionssdk({debug: true});
@@ -66,19 +67,23 @@ app.middleware((conv) => {
     conv.surface.capabilities.has('actions.capability.SCREEN_OUTPUT');
   conv.hasAudioPlayback =
     conv.surface.capabilities.has('actions.capability.AUDIO_OUTPUT');
+  conv.hasWebBrowser =
+    conv.surface.capabilities.has('actions.capability.WEB_BROWSER');
+
+  if (!conv.hasScreen && (conv.rawInput !== 'media response' || 'media status')) {
+    conv.ask(`Hi there! Sorry, I'm afraid you'll have to switch to a ` +
+      `screen device or select the phone surface in the simulator.`);
+    return;
+  }
 });
 
 // Welcome
 app.intent('actions.intent.MAIN', (conv) => {
   conv.ask(new SimpleResponse({
-    speech: 'Hi there!',
-    text: 'Hello there!',
-  }));
-  conv.ask(new SimpleResponse({
-    speech: 'I can show you basic cards, lists and carousels ' +
-      'as well as suggestions on your phone.',
-    text: 'I can show you basic cards, lists and carousels as ' +
-      'well as suggestions.',
+    speech: 'I can show you basic cards, lists, and more ' +
+      'on your phone and smart display.',
+    text: 'I can show you basic cards, lists, and more ' +
+      'on your phone and smart display.',
   }));
   conv.ask(new Suggestions(intentSuggestions));
 });
@@ -91,6 +96,12 @@ app.intent('actions.intent.TEXT', (conv, input) => {
     basicCard(conv);
   } else if (rawInput === 'list') {
     list(conv);
+  } else if (rawInput === 'table') {
+    table(conv);
+  } else if (rawInput === 'media') {
+    media(conv);
+  } else if (rawInput === 'browse carousel') {
+    browseCarousel(conv);
   } else if (rawInput === 'carousel') {
     carousel(conv);
   } else if (rawInput === 'normal ask') {
@@ -108,7 +119,7 @@ app.intent('actions.intent.TEXT', (conv, input) => {
   }
 });
 
-// React to list or carousel selection
+// Handle list or carousel selection
 app.intent('actions.intent.OPTION', (conv, params, option) => {
   let response = 'You did not select any item from the list or carousel';
   if (option && SELECTED_ITEM_RESPONSES.hasOwnProperty(option)) {
@@ -117,10 +128,11 @@ app.intent('actions.intent.OPTION', (conv, params, option) => {
     response = 'You selected an unknown item from the list or carousel';
   }
   conv.ask(response);
+  conv.ask(new Suggestions(intentSuggestions));
 });
 
 /**
- * Normal Ask
+ * Normal Ask/Fallback
  * @param {object} conv - The conversation object.
  */
 function normalAsk(conv) {
@@ -132,13 +144,7 @@ function normalAsk(conv) {
  * @param {object} conv - The conversation object.
  */
 function suggestions(conv) {
-  if (!conv.hasScreen) {
-    conv.ask('Sorry, try this on a screen device or select the ' +
-      'phone surface in the simulator.');
-    return;
-  }
   conv.ask('This is a simple response for suggestions.');
-  conv.ask(new Suggestions('Suggestion Chips'));
   conv.ask(new Suggestions(intentSuggestions));
   conv.ask(new LinkOutSuggestion({
     name: 'Suggestion Link',
@@ -151,14 +157,8 @@ function suggestions(conv) {
  * @param {object} conv - The conversation object.
  */
 function basicCard(conv) {
-  if (!conv.hasScreen) {
-    conv.ask('Sorry, try this on a screen device or select the ' +
-      'phone surface in the simulator.');
-    return;
-  }
   conv.ask('This is the first simple response for a basic card.');
   conv.ask(new Suggestions(intentSuggestions));
-  // Create a basic card
   conv.ask(new BasicCard({
     text: `This is a basic card.  Text in a basic card can include "quotes" and
     most other unicode characters including emoji 📱.  Basic cards also support
@@ -188,74 +188,141 @@ function basicCard(conv) {
  * @param {object} conv - The conversation object.
  */
 function list(conv) {
-  if (!conv.hasScreen) {
-    conv.ask('Sorry, try this on a screen device or select the ' +
-      'phone surface in the simulator.');
-    return;
-  }
   conv.ask('This is a simple response for a list.');
   conv.ask(new Suggestions(intentSuggestions));
-  // Create a list
   conv.ask(new List({
     title: 'List Title',
     items: {
       // Add the first item to the list
-      [SELECTION_KEY_ONE]: {
+      [SELECTION_KEY_GOOGLE_ASSISTANT]: {
         synonyms: [
-          'synonym of title 1',
-          'synonym of title 2',
-          'synonym of title 3',
+          'Assistant',
+          'Google Assistant',
         ],
-        title: 'Title of First List Item',
-        description: 'This is a description of a list item.',
+        title: 'Item #1',
+        description: 'Description of Item #1',
         image: new Image({
-          url: IMG_URL_AOG,
-          alt: 'Image alternate text',
+          url: 'https://www.gstatic.com/images/branding/product/2x/assistant_48dp.png',
+          alt: 'Google Assistant logo',
         }),
       },
       // Add the second item to the list
-      [SELECTION_KEY_GOOGLE_HOME]: {
+      [SELECTION_KEY_GOOGLE_PAY]: {
         synonyms: [
           'Google Home Assistant',
           'Assistant on the Google Home',
       ],
-        title: 'Google Home',
-        description: 'Google Home is a voice-activated speaker powered by ' +
-          'the Google Assistant.',
+        title: 'Item #2',
+        description: 'Description of Item #2',
         image: new Image({
-          url: IMG_URL_GOOGLE_HOME,
-          alt: 'Google Home',
+          url: 'https://www.gstatic.com/images/branding/product/2x/pay_48dp.png',
+          alt: 'Google Pay logo',
         }),
       },
       // Add the third item to the list
       [SELECTION_KEY_GOOGLE_PIXEL]: {
         synonyms: [
-          'Google Pixel XL',
           'Pixel',
-          'Pixel XL',
+          'Google Pixel',
+          'Pixel phone',
         ],
-        title: 'Google Pixel',
-        description: 'Pixel. Phone by Google.',
+        title: 'Item #3',
+        description: 'Description of Item #3',
         image: new Image({
-          url: IMG_URL_GOOGLE_PIXEL,
-          alt: 'Google Pixel',
+          url: 'https://storage.googleapis.com/madebygoog/v1/Pixel/Pixel_ColorPicker/Pixel_Device_Angled_Black-720w.png',
+          alt: 'Google Pixel phone',
         }),
       },
       // Add the last item to the list
-      [SELECTION_KEY_GOOGLE_ALLO]: {
-        title: 'Google Allo',
+      [SELECTION_KEY_GOOGLE_HOME]: {
+        title: 'Item #4',
         synonyms: [
-          'Allo',
+          'Home',
+          'Google Home',
         ],
-        description: 'Introducing Google Allo, a smart messaging app that ' +
-          'helps you say more and do more.',
+        description: 'Description of Item #4',
         image: new Image({
-          url: IMG_URL_GOOGLE_ALLO,
-          alt: 'Google Allo Logo',
+          url: 'https://lh3.googleusercontent.com/Nu3a6F80WfixUqf_ec_vgXy_c0-0r4VLJRXjVFF_X_CIilEu8B9fT35qyTEj_PEsKw',
+          alt: 'Google Home',
         }),
       },
     },
   }));
+}
+
+/**
+ * Media
+ * @param {object} conv - The conversation object.
+ */
+function media(conv) {
+  if (!conv.hasAudioPlayback) {
+    conv.close('Sorry, this device does not support audio playback.');
+    return;
+  }
+  conv.ask('This is the first simple response for a media response');
+  conv.ask(new MediaObject({
+    name: 'Jazz in Paris',
+    url: 'https://storage.googleapis.com/automotive-media/Jazz_In_Paris.mp3',
+    description: 'A funky Jazz tune',
+    icon: new Image({
+      url: 'https://storage.googleapis.com/automotive-media/album_art.jpg',
+      alt: 'Media icon',
+    }),
+  }));
+  conv.ask(new Suggestions(intentSuggestions));
+ }
+
+/**
+ * Handling Media Status Event
+ * @param {object} conv - The conversation object.
+ */
+function handleMedia(conv) {
+  const mediaStatus = conv.arguments.get('MEDIA_STATUS');
+  let response = 'Unknown media status received.';
+  if (mediaStatus && mediaStatus.status === 'FINISHED') {
+    response = 'Hope you enjoyed the tunes!';
+  }
+  conv.ask(response);
+  conv.ask(new Suggestions(intentSuggestions));
+}
+
+/**
+ * Browse Carousel
+ * @param {object} conv - The conversation object.
+ */
+function browseCarousel(conv) {
+  if (!conv.hasWebBrowser) {
+    conv.ask(`I'm sorry, browse carousel isn't currently supported on smart display`);
+    const filterChips = intentSuggestions.filter(chip => chip !="Browse Carousel");
+    conv.ask(new Suggestions(filterChips));
+    return;
+  }
+  conv.ask('This is an example of a "Browse Carousel"');
+  conv.ask(new BrowseCarousel({
+    items: [
+      new BrowseCarouselItem({
+        title: 'Item #1',
+        url: 'https://assistant.google.com/',
+        description: 'Description of Item #1',
+        image: new Image({
+          url: 'https://www.gstatic.com/images/branding/product/2x/assistant_64dp.png',
+          alt: 'Google Assistant logo',
+        }),
+        footer: 'Item 1 footer',
+      }),
+      new BrowseCarouselItem({
+        title: 'Item #2',
+        url: 'https://developers.google.com/actions/transactions/physical/dev-guide-physical-gpay',
+        description: 'Description of Item #2',
+        image: new Image({
+          url: 'https://www.gstatic.com/images/branding/product/2x/pay_64dp.png',
+          alt: 'Google Pay logo',
+        }),
+        footer: 'Item 2 footer',
+      }),
+    ],
+  }));
+  conv.ask(new Suggestions(intentSuggestions));
 }
 
 /**
@@ -263,69 +330,59 @@ function list(conv) {
  * @param {object} conv - The conversation object.
  */
 function carousel(conv) {
-  if (!conv.hasScreen) {
-    conv.ask('Sorry, try this on a screen device or select the ' +
-      'phone surface in the simulator.');
-    return;
-  }
   conv.ask('This is a simple response for a carousel.');
   conv.ask(new Suggestions(intentSuggestions));
-  // Create a carousel
   conv.ask(new Carousel({
     items: {
       // Add the first item to the carousel
-      [SELECTION_KEY_ONE]: {
+      [SELECTION_KEY_GOOGLE_ASSISTANT]: {
         synonyms: [
-          'synonym of title 1',
-          'synonym of title 2',
-          'synonym of title 3',
+          'Assistant',
+          'Google Assistant',
         ],
-        title: 'Title of First Carousel Item',
-        description: 'This is a description of a carousel item.',
+        title: 'Item #1',
+        description: 'Description of Item #1',
         image: new Image({
           url: IMG_URL_AOG,
-          alt: 'Image alternate text',
+          alt: 'Google Assistant logo',
         }),
       },
       // Add the second item to the carousel
-      [SELECTION_KEY_GOOGLE_HOME]: {
+      [SELECTION_KEY_GOOGLE_PAY]: {
         synonyms: [
-          'Google Home Assistant',
-          'Assistant on the Google Home',
+          'Transactions',
+          'Google Payments',
       ],
-        title: 'Google Home',
-        description: 'Google Home is a voice-activated speaker powered by ' +
-          'the Google Assistant.',
+        title: 'Item #2',
+        description: 'Description of Item #2',
         image: new Image({
-          url: IMG_URL_GOOGLE_HOME,
-          alt: 'Google Home',
+          url: IMG_URL_GOOGLE_PAY,
+          alt: 'Google Pay logo',
         }),
       },
       // Add third item to the carousel
       [SELECTION_KEY_GOOGLE_PIXEL]: {
         synonyms: [
-          'Google Pixel XL',
           'Pixel',
-          'Pixel XL',
+          'Google Pixel phone',
         ],
-        title: 'Google Pixel',
-        description: 'Pixel. Phone by Google.',
+        title: 'Item #3',
+        description: 'Description of Item #3',
         image: new Image({
           url: IMG_URL_GOOGLE_PIXEL,
-          alt: 'Google Pixel',
+          alt: 'Google Pixel phone',
         }),
       },
       // Add last item of the carousel
-      [SELECTION_KEY_GOOGLE_ALLO]: {
-        title: 'Google Allo',
+      [SELECTION_KEY_GOOGLE_HOME]: {
+        title: 'Item #4',
         synonyms: [
-          'Allo',
+          'Google Home',
         ],
-        description: 'Introducing Google Allo, a smart messaging app that ' +
-          'helps you say more and do more.',
+        description: 'Description of Item #4',
         image: new Image({
-          url: IMG_URL_GOOGLE_ALLO,
-          alt: 'Google Allo Logo',
+          url: IMG_URL_GOOGLE_HOME,
+          alt: 'Google Home',
         }),
       },
     },
@@ -333,15 +390,28 @@ function carousel(conv) {
 }
 
 /**
+ * Table
+ * @param {object} conv - The conversation object.
+ */
+function table(conv) {
+  conv.ask('You can include table data like this')
+  conv.ask(new Table({
+    dividers: true,
+    columns: ['Basic Plan', 'Mid-tier Plan', 'Premium Plan'],
+    rows: [
+      ['row 1 item 1', 'row 1 item 2', 'row 1 item 3'],
+      ['row 2 item 1', 'row 2 item 2', 'row 2 item 3'],
+    ],
+  }));
+  conv.ask(new Suggestions(intentSuggestions));
+}
+
+
+/**
  * Leave conversation with card
  * @param {object} conv - The conversation object.
  */
 function byeCard(conv) {
-  if (!hasScreen) {
-    conv.ask('Sorry, try this on a screen device or select the phone ' +
-      'surface in the simulator.');
-    return;
-  }
   conv.ask('Goodbye, World!');
   conv.close(new BasicCard({
     text: 'This is a goodbye card.',
@@ -367,4 +437,4 @@ function normalBye(conv) {
   conv.close('Okay see you later!');
 }
 
-exports.conversationComponent = functions.https.onRequest(app);
+exports.webhook = functions.https.onRequest(app);
